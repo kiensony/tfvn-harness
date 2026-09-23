@@ -1,0 +1,56 @@
+{
+  "name": "tfvn-harness",
+  "version": "0.1.0-dev.1",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-isolation=none tests/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "dev": "node --import tsx packages/cli/src/main.ts",
+    "cloud": "node --import tsx packages/cloud/src/main.ts",
+    "worker": "node --import tsx packages/cloud/src/worker.ts",
+    "eval:routing": "node --import tsx scripts/evaluate-routing.ts",
+    "format": "prettier --write packages tests scripts",
+    "format:check": "prettier --check packages tests scripts"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^8.2.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@temporalio/activity": "^1.24.0",
+    "@temporalio/client": "^1.14.0",
+    "@temporalio/worker": "^1.14.0",
+    "@temporalio/workflow": "^1.14.0",
+    "ink": "^6.0.0",
+    "pg": "^8.16.0",
+    "react": "^19.0.0",
+    "yaml": "^2.8.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "@types/react": "^19.0.0",
+    "prettier": "^3.9.8",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3"
+  },
+  "bin": {
+    "tfvn": "packages/cli/bin/tfvn.js"
+  },
+  "files": [
+    "dist",
+    "packages/cli/bin",
+    "docs",
+    "examples",
+    "infra",
+    "README.md"
+  ]
+}

@@ -1,0 +1,546 @@
+{
+  "schemaVersion": 1,
+  "suite": "deterministic-dispatch-v1",
+  "cases": [
+    {
+      "message": "@assistant inspect this module",
+      "owner": "assistant",
+      "readonly": true
+    },
+    {
+      "message": "@assistant explain this function",
+      "owner": "assistant",
+      "readonly": true
+    },
+    {
+      "message": "@assistant review this diff",
+      "owner": "assistant",
+      "readonly": true
+    },
+    {
+      "message": "@assistant investigate this failure",
+      "owner": "assistant",
+      "readonly": true
+    },
+    {
+      "message": "@assistant propose an approach",
+      "owner": "assistant",
+      "readonly": true
+    },
+    {
+      "message": "@planner inspect this module",
+      "owner": "planner",
+      "readonly": true
+    },
+    {
+      "message": "@planner explain this function",
+      "owner": "planner",
+      "readonly": true
+    },
+    {
+      "message": "@planner review this diff",
+      "owner": "planner",
+      "readonly": true
+    },
+    {
+      "message": "@planner investigate this failure",
+      "owner": "planner",
+      "readonly": true
+    },
+    {
+      "message": "@planner propose an approach",
+      "owner": "planner",
+      "readonly": true
+    },
+    {
+      "message": "@architect inspect this module",
+      "owner": "architect",
+      "readonly": true
+    },
+    {
+      "message": "@architect explain this function",
+      "owner": "architect",
+      "readonly": true
+    },
+    {
+      "message": "@architect review this diff",
+      "owner": "architect",
+      "readonly": true
+    },
+    {
+      "message": "@architect investigate this failure",
+      "owner": "architect",
+      "readonly": true
+    },
+    {
+      "message": "@architect propose an approach",
+      "owner": "architect",
+      "readonly": true
+    },
+    {
+      "message": "@designer inspect this module",
+      "owner": "designer",
+      "readonly": true
+    },
+    {
+      "message": "@designer explain this function",
+      "owner": "designer",
+      "readonly": true
+    },
+    {
+      "message": "@designer review this diff",
+      "owner": "designer",
+      "readonly": true
+    },
+    {
+      "message": "@designer investigate this failure",
+      "owner": "designer",
+      "readonly": true
+    },
+    {
+      "message": "@designer propose an approach",
+      "owner": "designer",
+      "readonly": true
+    },
+    {
+      "message": "@dev inspect this module",
+      "owner": "dev",
+      "readonly": true
+    },
+    {
+      "message": "@dev explain this function",
+      "owner": "dev",
+      "readonly": true
+    },
+    {
+      "message": "@dev review this diff",
+      "owner": "dev",
+      "readonly": true
+    },
+    {
+      "message": "@dev investigate this failure",
+      "owner": "dev",
+      "readonly": true
+    },
+    {
+      "message": "@dev propose an approach",
+      "owner": "dev",
+      "readonly": true
+    },
+    {
+      "message": "@test inspect this module",
+      "owner": "test",
+      "readonly": true
+    },
+    {
+      "message": "@test explain this function",
+      "owner": "test",
+      "readonly": true
+    },
+    {
+      "message": "@test review this diff",
+      "owner": "test",
+      "readonly": true
+    },
+    {
+      "message": "@test investigate this failure",
+      "owner": "test",
+      "readonly": true
+    },
+    {
+      "message": "@test propose an approach",
+      "owner": "test",
+      "readonly": true
+    },
+    {
+      "message": "@qa inspect this module",
+      "owner": "qa",
+      "readonly": true
+    },
+    {
+      "message": "@qa explain this function",
+      "owner": "qa",
+      "readonly": true
+    },
+    {
+      "message": "@qa review this diff",
+      "owner": "qa",
+      "readonly": true
+    },
+    {
+      "message": "@qa investigate this failure",
+      "owner": "qa",
+      "readonly": true
+    },
+    {
+      "message": "@qa propose an approach",
+      "owner": "qa",
+      "readonly": true
+    },
+    {
+      "message": "@review inspect this module",
+      "owner": "review",
+      "readonly": true
+    },
+    {
+      "message": "@review explain this function",
+      "owner": "review",
+      "readonly": true
+    },
+    {
+      "message": "@review review this diff",
+      "owner": "review",
+      "readonly": true
+    },
+    {
+      "message": "@review investigate this failure",
+      "owner": "review",
+      "readonly": true
+    },
+    {
+      "message": "@review propose an approach",
+      "owner": "review",
+      "readonly": true
+    },
+    {
+      "message": "@security inspect this module",
+      "owner": "security",
+      "readonly": true
+    },
+    {
+      "message": "@security explain this function",
+      "owner": "security",
+      "readonly": true
+    },
+    {
+      "message": "@security review this diff",
+      "owner": "security",
+      "readonly": true
+    },
+    {
+      "message": "@security investigate this failure",
+      "owner": "security",
+      "readonly": true
+    },
+    {
+      "message": "@security propose an approach",
+      "owner": "security",
+      "readonly": true
+    },
+    {
+      "message": "@devops inspect this module",
+      "owner": "devops",
+      "readonly": true
+    },
+    {
+      "message": "@devops explain this function",
+      "owner": "devops",
+      "readonly": true
+    },
+    {
+      "message": "@devops review this diff",
+      "owner": "devops",
+      "readonly": true
+    },
+    {
+      "message": "@devops investigate this failure",
+      "owner": "devops",
+      "readonly": true
+    },
+    {
+      "message": "@devops propose an approach",
+      "owner": "devops",
+      "readonly": true
+    },
+    {
+      "message": "@docs inspect this module",
+      "owner": "docs",
+      "readonly": true
+    },
+    {
+      "message": "@docs explain this function",
+      "owner": "docs",
+      "readonly": true
+    },
+    {
+      "message": "@docs review this diff",
+      "owner": "docs",
+      "readonly": true
+    },
+    {
+      "message": "@docs investigate this failure",
+      "owner": "docs",
+      "readonly": true
+    },
+    {
+      "message": "@docs propose an approach",
+      "owner": "docs",
+      "readonly": true
+    },
+    {
+      "message": "@research inspect this module",
+      "owner": "research",
+      "readonly": true
+    },
+    {
+      "message": "@research explain this function",
+      "owner": "research",
+      "readonly": true
+    },
+    {
+      "message": "@research review this diff",
+      "owner": "research",
+      "readonly": true
+    },
+    {
+      "message": "@research investigate this failure",
+      "owner": "research",
+      "readonly": true
+    },
+    {
+      "message": "@research propose an approach",
+      "owner": "research",
+      "readonly": true
+    },
+    {
+      "message": "`@assistant` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @assistant was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@planner` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @planner was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@architect` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @architect was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@designer` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @designer was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@dev` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @dev was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@test` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @test was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@qa` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @qa was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@review` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @review was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@security` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @security was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@devops` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @devops was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@docs` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @docs was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "`@research` is a code example",
+      "owner": "assistant"
+    },
+    {
+      "message": "> @research was quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "@assistant consult @planner",
+      "owner": "assistant"
+    },
+    {
+      "message": "@planner consult @architect",
+      "owner": "assistant"
+    },
+    {
+      "message": "@architect consult @designer",
+      "owner": "assistant"
+    },
+    {
+      "message": "@designer consult @dev",
+      "owner": "assistant"
+    },
+    {
+      "message": "@dev consult @test",
+      "owner": "assistant"
+    },
+    {
+      "message": "@test consult @qa",
+      "owner": "assistant"
+    },
+    {
+      "message": "@qa consult @review",
+      "owner": "assistant"
+    },
+    {
+      "message": "@review consult @security",
+      "owner": "assistant"
+    },
+    {
+      "message": "@security consult @devops",
+      "owner": "assistant"
+    },
+    {
+      "message": "@devops consult @docs",
+      "owner": "assistant"
+    },
+    {
+      "message": "@docs consult @research",
+      "owner": "assistant"
+    },
+    {
+      "message": "@research consult @assistant",
+      "owner": "assistant"
+    },
+    {
+      "message": "Explain this function",
+      "owner": "assistant"
+    },
+    {
+      "message": "Fix pagination",
+      "owner": "assistant"
+    },
+    {
+      "message": "Build an account settings page",
+      "owner": "assistant"
+    },
+    {
+      "message": "Make the header smaller",
+      "owner": "assistant"
+    },
+    {
+      "message": "Continue",
+      "owner": "assistant"
+    },
+    {
+      "message": "What changed?",
+      "owner": "assistant"
+    },
+    {
+      "message": "Run the tests",
+      "owner": "assistant"
+    },
+    {
+      "message": "Check this branch",
+      "owner": "assistant"
+    },
+    {
+      "message": "Summarize the findings",
+      "owner": "assistant"
+    },
+    {
+      "message": "Add an API route",
+      "owner": "assistant"
+    },
+    {
+      "message": "Improve error messages",
+      "owner": "assistant"
+    },
+    {
+      "message": "Write docs",
+      "owner": "assistant"
+    },
+    {
+      "message": "Use jane@dev.example",
+      "owner": "assistant"
+    },
+    {
+      "message": "Email qa@example.org",
+      "owner": "assistant"
+    },
+    {
+      "message": "The text says \"@dev\"",
+      "owner": "assistant"
+    },
+    {
+      "message": "```ts\n@dev\n```",
+      "owner": "assistant"
+    },
+    {
+      "message": "~~~\n@qa\n~~~",
+      "owner": "assistant"
+    },
+    {
+      "message": "Contact @dev@example.org",
+      "owner": "assistant"
+    },
+    {
+      "message": "    @review quoted",
+      "owner": "assistant"
+    },
+    {
+      "message": "\\@designer literal",
+      "owner": "assistant"
+    },
+    {
+      "message": "[link](https://example.test/@dev)",
+      "owner": "assistant"
+    },
+    {
+      "message": "\u201c@qa\u201d is just text",
+      "owner": "assistant"
+    },
+    {
+      "message": "No department is selected",
+      "owner": "assistant"
+    },
+    {
+      "message": "Investigate API latency",
+      "owner": "assistant"
+    }
+  ]
+}

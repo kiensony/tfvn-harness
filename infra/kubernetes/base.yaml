@@ -1,0 +1,174 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tfvn
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tfvn-sandbox
+  namespace: tfvn
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tfvn-control
+  namespace: tfvn
+  annotations:
+    iam.gke.io/gcp-service-account: TFVN_CONTROL_GSA
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tfvn-workspaces
+  namespace: tfvn
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: enterprise-rwx
+  resources:
+    requests:
+      storage: 1Ti
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tfvn-sandbox-manager
+  namespace: tfvn
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, get, list, watch, delete]
+  - apiGroups: [""]
+    resources: [pods, pods/log]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tfvn-sandbox-manager
+  namespace: tfvn
+subjects:
+  - kind: ServiceAccount
+    name: tfvn-control
+    namespace: tfvn
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tfvn-sandbox-manager
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-deny-all-network
+  namespace: tfvn
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tfvn-sandbox
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sandbox-capacity
+  namespace: tfvn
+spec:
+  hard:
+    pods: "40"
+    requests.cpu: "80"
+    requests.memory: 160Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tfvn-worker
+  namespace: tfvn
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: tfvn-worker}
+  template:
+    metadata:
+      labels: {app: tfvn-worker}
+    spec:
+      serviceAccountName: tfvn-control
+      nodeSelector: {tfvn-role: control}
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000}
+      containers:
+        - name: worker
+          image: TFVN_CONTROL_IMAGE_DIGEST
+          command: [node, dist/packages/cloud/src/worker.js]
+          envFrom:
+            - secretRef: {name: tfvn-control-credentials}
+            - configMapRef: {name: tfvn-control-config}
+          env:
+            - {name: TFVN_SANDBOX_BACKEND, value: kubernetes}
+            - {name: TFVN_WORKER_ROOT, value: /state/runs}
+            - {name: TFVN_CONFIG, value: /config/config.yaml}
+          resources:
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: state, mountPath: /state/runs}
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: temp, mountPath: /tmp}
+      volumes:
+        - name: state
+          persistentVolumeClaim: {claimName: tfvn-workspaces}
+        - name: config
+          configMap: {name: tfvn-trusted-config}
+        - name: temp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tfvn-api
+  namespace: tfvn
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: tfvn-api}
+  template:
+    metadata:
+      labels: {app: tfvn-api}
+    spec:
+      serviceAccountName: tfvn-control
+      nodeSelector: {tfvn-role: control}
+      containers:
+        - name: api
+          image: TFVN_CONTROL_IMAGE_DIGEST
+          ports: [{containerPort: 8787}]
+          envFrom:
+            - secretRef: {name: tfvn-api-credentials}
+            - configMapRef: {name: tfvn-control-config}
+          env:
+            - {name: HOST, value: 0.0.0.0}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8787}
+          resources:
+            requests: {cpu: "500m", memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tfvn-api
+  namespace: tfvn
+spec:
+  selector: {app: tfvn-api}
+  ports: [{port: 8787, targetPort: 8787}]

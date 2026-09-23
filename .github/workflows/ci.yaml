@@ -1,0 +1,35 @@
+name: verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: tfvn
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: tfvn_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tfvn"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://tfvn:test-only@localhost:5432/tfvn_test
+      RUN_DOCKER_TESTS: '1'
+      TEMPORAL_TEST_ADDRESS: 127.0.0.1:7233
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24', cache: npm}
+      - run: npm ci
+      - run: docker build -f infra/Dockerfile.sandbox -t tfvn-sandbox:dev .
+      - run: docker run -d --rm --name tfvn-ci-temporal -p 127.0.0.1:7233:7233 temporalio/temporal:1.4.1 server start-dev --ip 0.0.0.0
+      - run: npm run check
+      - run: npm run eval:routing
+      - run: npm run format:check
+      - run: node packages/cli/bin/tfvn.js run 'Explain this project' --mock --json --state /tmp/tfvn-smoke
+      - if: always()
+        run: docker stop tfvn-ci-temporal || true

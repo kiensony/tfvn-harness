@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.tfvn/state/
+.worktrees/
+.superpowers/
+.env
+.env.*
+!.env.example
+*.sqlite*
+*.log
+infra/terraform/.terraform/
+*.tfstate*
+*.tfplan

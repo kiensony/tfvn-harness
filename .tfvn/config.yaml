@@ -1,0 +1,10 @@
+schemaVersion: 1
+checks:
+  - name: tests
+    command: [npm, test]
+  - name: typecheck
+    command: [npm, run, typecheck]
+  - name: build
+    command: [npm, run, build]
+  - name: routing
+    command: [npm, run, 'eval:routing']

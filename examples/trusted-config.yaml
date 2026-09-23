@@ -1,0 +1,21 @@
+# Copy to ~/.config/tfvn/config.yaml. This file is trusted user configuration.
+# Project .tfvn/config.yaml cannot set endpoints, prices or grants.
+schemaVersion: 1
+providers:
+  qwen:
+    baseUrl: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    apiKeyEnv: DASHSCOPE_API_KEY
+    # Set inputPerMillion and outputPerMillion using your verified account prices.
+  openai:
+    baseUrl: https://api.openai.com/v1
+    apiKeyEnv: OPENAI_API_KEY
+  anthropic:
+    baseUrl: https://api.anthropic.com/v1
+    apiKeyEnv: ANTHROPIC_API_KEY
+sandboxImage: tfvn-sandbox:dev
+allowedOrigins:
+  - https://developers.openai.com
+  - https://docs.python.org
+# cloud:
+#   url: https://your-tfvn-control-plane.example
+#   tokenEnv: TFVN_CLOUD_TOKEN

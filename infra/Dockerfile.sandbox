@@ -1,0 +1,12 @@
+FROM node:24-bookworm-slim
+# Seed HTTPS trust from Node's bundled public roots before installing system CAs.
+RUN mkdir -p /etc/ssl/certs \
+ && node -e "require('fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('tls').rootCertificates.join('\\n'))" \
+ && sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+ && apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv git ripgrep ca-certificates \
+ && python3 -m venv /opt/python && /opt/python/bin/pip install --no-cache-dir pytest==8.4.2 \
+ && rm -rf /var/lib/apt/lists/*
+ENV PATH="/opt/python/bin:${PATH}"
+WORKDIR /workspace
+USER 1000:1000
+CMD ["node", "--version"]

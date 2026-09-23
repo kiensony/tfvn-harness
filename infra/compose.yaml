@@ -1,0 +1,23 @@
+# Local control-plane development. A worker is launched on the host; do not expose
+# a Docker daemon socket to the API or to coding containers.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: tfvn
+      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: tfvn
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tfvn"]
+      interval: 5s
+      retries: 10
+  temporal:
+    image: temporalio/temporal:1.4.1
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/data/temporal.db"]
+    ports: ["127.0.0.1:7233:7233", "127.0.0.1:8233:8233"]
+    volumes: ["temporal:/data"]
+volumes:
+  postgres:
+  temporal:
