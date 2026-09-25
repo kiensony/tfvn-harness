@@ -326,12 +326,33 @@ export class WorkspaceService {
           .trim()
           .split("\n")
           .filter(Boolean);
-        if (!conflicts.length) throw e;
+        if (conflicts.length)
+          return {
+            status: "conflict",
+            workspace,
+            revision: (await git(workspace.path, ["rev-parse", "HEAD"])).trim(),
+            conflicts,
+          };
+        const message = e instanceof Error ? e.message : String(e);
+        if (!/empty|conflict/i.test(message)) throw e;
+        await git(workspace.path, ["cherry-pick", "--abort"]).catch(() => {});
+        const changed = (
+          await git(workspace.path, [
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            commit,
+          ])
+        )
+          .trim()
+          .split("\n")
+          .filter(Boolean);
         return {
           status: "conflict",
           workspace,
           revision: (await git(workspace.path, ["rev-parse", "HEAD"])).trim(),
-          conflicts,
+          conflicts: changed.length ? changed : ["unknown"],
         };
       }
     }
@@ -351,6 +372,41 @@ export class WorkspaceService {
       "--binary",
       workspace.base,
     ]);
+  }
+  async discard(workspace: Workspace) {
+    const removed = await runProcess(
+      [
+        "git",
+        ...gitOptions,
+        "-C",
+        this.repository,
+        "worktree",
+        "remove",
+        "--force",
+        workspace.path,
+      ],
+      { timeoutMs: 30000, maxBytes: 1_000_000 },
+    );
+    if (removed.exitCode !== 0)
+      await rm(workspace.path, { recursive: true, force: true }).catch(
+        () => {},
+      );
+    await runProcess(
+      ["git", ...gitOptions, "-C", this.repository, "worktree", "prune"],
+      { timeoutMs: 30000, maxBytes: 1_000_000 },
+    ).catch(() => {});
+    await runProcess(
+      [
+        "git",
+        ...gitOptions,
+        "-C",
+        this.repository,
+        "branch",
+        "-D",
+        workspace.branch,
+      ],
+      { timeoutMs: 30000, maxBytes: 1_000_000 },
+    ).catch(() => {});
   }
   async assertClean(workspace: Workspace) {
     await this.assertMetadata(workspace);

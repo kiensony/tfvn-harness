@@ -34,6 +34,7 @@ const projectSchema = z
     schemaVersion: z.literal(1).default(1),
     models: z.record(z.string(), z.string().min(1)).default({}),
     checks: z.array(checkSchema).default([]),
+    testPaths: z.array(z.string()).default([]),
     secretPaths: z.array(z.string()).default([]),
     instructions: z.array(z.string()).default(["AGENTS.md"]),
     skills: z.array(z.string()).default([]),

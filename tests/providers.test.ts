@@ -274,6 +274,21 @@ test("Anthropic keeps signed thinking private and maps tools and effort", async 
   assert.equal((native?.content as any[])[0].signature, "signed");
   assert.equal(events.find((e) => e.type === "usage")?.usage.outputTokens, 8);
 });
+test("admission estimates one token per four prompt bytes", () => {
+  const system = "a".repeat(40000);
+  const request = { ...req, system, messages: [], tools: [] };
+  const estimate = new QwenAdapter({ ...ep }).estimateUsage(request);
+  const bytes = Buffer.byteLength(
+    JSON.stringify({
+      system: request.system,
+      messages: request.messages,
+      tools: request.tools,
+    }),
+  );
+  assert.equal(estimate.inputTokens, Math.ceil(bytes / 4));
+  assert.equal(estimate.outputTokens, request.maxOutputTokens);
+  assert.ok(estimate.inputTokens > 10000 && estimate.inputTokens < 11000);
+});
 test("missing pricing prevents live admission and aborted requests stay aborted", async () => {
   assert.throws(
     () =>

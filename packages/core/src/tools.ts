@@ -15,6 +15,7 @@ import { type ToolCall, type ToolDefinition } from "./model.js";
 import { ArtifactStore } from "./artifacts.js";
 import { safePath, protectedPath } from "./paths.js";
 import { git } from "./workspace.js";
+import { runProcess } from "./process.js";
 import { type Sandbox } from "./sandbox.js";
 import { ExtensionRegistry } from "./extensions.js";
 export class ToolInputError extends Error {}
@@ -43,14 +44,28 @@ const definitions = {
   read: {
     capability: "read",
     sideEffect: false,
-    description: "Read a UTF-8 repository file.",
-    schema: z.object({ path: pathSchema }).strict(),
+    description:
+      "Read a UTF-8 repository file. Optional startLine and endLine are inclusive. Files larger than 256 KB return the first 400 lines unless a range is set.",
+    schema: z
+      .object({
+        path: pathSchema,
+        startLine: z.number().int().positive().optional(),
+        endLine: z.number().int().positive().optional(),
+      })
+      .strict(),
   },
   search: {
     capability: "read",
     sideEffect: false,
-    description: "Search repository text with a literal string.",
-    schema: z.object({ query: z.string().min(1).max(1000) }).strict(),
+    description:
+      "Search repository text. Literal by default; set regex true for a regular expression. Skips binaries, secrets, and ignored files.",
+    schema: z
+      .object({
+        query: z.string().min(1).max(1000),
+        regex: z.boolean().optional(),
+        limit: z.number().int().positive().max(1000).optional(),
+      })
+      .strict(),
   },
   write: {
     capability: "edit",
@@ -64,12 +79,21 @@ const definitions = {
     capability: "edit",
     sideEffect: true,
     description:
-      "Replace exactly one literal occurrence. Fails for missing or ambiguous matches.",
+      "Replace each hunk exactly once, in order. A missing or ambiguous hunk fails without writing. oldText/newText is a single hunk.",
     schema: z
       .object({
         path: pathSchema,
-        oldText: z.string().min(1),
-        newText: z.string(),
+        oldText: z.string().min(1).optional(),
+        newText: z.string().optional(),
+        hunks: z
+          .array(
+            z
+              .object({ oldText: z.string().min(1), newText: z.string() })
+              .strict(),
+          )
+          .min(1)
+          .max(20)
+          .optional(),
       })
       .strict(),
   },
@@ -102,6 +126,15 @@ export interface ToolResult {
   content: string;
   artifact: string;
   error?: boolean;
+}
+/** Keep the start and the failing tail of a long observation. */
+export function clipObservation(content: string, artifact: string): string {
+  const bytes = Buffer.from(content);
+  if (bytes.length <= 32000) return content;
+  const omitted = bytes.length - 32000;
+  const head = bytes.subarray(0, 8000).toString("utf8");
+  const tail = bytes.subarray(bytes.length - 24000).toString("utf8");
+  return `${head}\n[${omitted} bytes omitted; full artifact ${artifact}]\n${tail}`;
 }
 export class ToolBroker {
   private mutation: Promise<unknown> = Promise.resolve();
@@ -180,14 +213,7 @@ export class ToolBroker {
         : await this.invoke(call.name, args, signal);
       const content = typeof value === "string" ? value : JSON.stringify(value);
       const artifact = await this.artifacts.put(content);
-      return {
-        content:
-          content.length > 32000
-            ? content.slice(0, 32000) +
-              `\n[Truncated; full artifact ${artifact}]`
-            : content,
-        artifact,
-      };
+      return { content: clipObservation(content, artifact), artifact };
     };
     if (!def.sideEffect) return work();
     const pending = this.mutation.then(work, work);
@@ -235,30 +261,39 @@ export class ToolBroker {
     signal?: AbortSignal,
   ): Promise<unknown> {
     if (name === "files") return this.paths();
-    if (name === "search") {
-      const found: unknown[] = [];
-      for (const path of await this.paths()) {
-        signal?.throwIfAborted();
-        try {
-          const text = await this.read(path);
-          for (const [i, line] of text.split("\n").entries())
-            if (line.includes(args.query)) {
-              found.push({ path, line: i + 1, text: line.slice(0, 1000) });
-              if (found.length >= 100) return found;
-            }
-        } catch {}
-      }
-      return found;
-    }
-    if (name === "read") return this.read(args.path);
+    if (name === "search")
+      return this.search(
+        args.query,
+        args.regex === true,
+        args.limit ?? 100,
+        signal,
+      );
+    if (name === "read")
+      return this.read(args.path, args.startLine, args.endLine);
     if (name === "write" || name === "patch") {
       const path = await this.resolve(args.path, name === "write");
       let content = args.content;
       if (name === "patch") {
-        const original = await this.read(args.path);
-        if (original.split(args.oldText).length !== 2)
-          throw new ToolInputError("Patch must match exactly once");
-        content = original.replace(args.oldText, args.newText);
+        const hunks =
+          args.hunks ??
+          (typeof args.oldText === "string" && typeof args.newText === "string"
+            ? [{ oldText: args.oldText, newText: args.newText }]
+            : undefined);
+        if (!hunks?.length)
+          throw new ToolInputError("Patch needs oldText/newText or hunks");
+        content = await this.readRaw(args.path);
+        for (const hunk of hunks) {
+          const located = locate(content, hunk.oldText);
+          if (located.length !== 1)
+            throw new ToolInputError(
+              `Patch matched ${located.length} times in ${args.path}${
+                located.length
+                  ? `; first line ${located[0]}, last line ${located[located.length - 1]}`
+                  : ""
+              }`,
+            );
+          content = content.replace(hunk.oldText, hunk.newText);
+        }
       }
       await mkdir(dirname(path), { recursive: true });
       const mode = await lstat(path).then(
@@ -305,13 +340,169 @@ export class ToolBroker {
       throw new ToolInputError(String(e));
     }
   }
-  private async read(path: string): Promise<string> {
+  private async search(
+    query: string,
+    regex: boolean,
+    limit: number,
+    signal?: AbortSignal,
+  ) {
+    if (regex)
+      try {
+        new RegExp(query);
+      } catch (e) {
+        throw new ToolInputError(
+          `Invalid search pattern: ${e instanceof Error ? e.message : e}`,
+        );
+      }
+    try {
+      return await this.searchRg(query, regex, limit, signal);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT")
+        return this.searchScan(query, regex, limit, signal);
+      throw e;
+    }
+  }
+  private async searchRg(
+    query: string,
+    regex: boolean,
+    limit: number,
+    signal?: AbortSignal,
+  ) {
+    const argv = [
+      "rg",
+      "--json",
+      "--color",
+      "never",
+      "--glob",
+      "!.git/**",
+      "--glob",
+      "!node_modules/**",
+      "--glob",
+      "!dist/**",
+      ...(regex ? [] : ["-F"]),
+      "--",
+      query,
+      ".",
+    ];
+    let result;
+    try {
+      result = await runProcess(argv, {
+        cwd: this.root,
+        signal,
+        timeoutMs: 30000,
+        maxBytes: 8_000_000,
+      });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") throw e;
+      throw new ToolInputError(String(e));
+    }
+    if (result.exitCode === 2)
+      throw new ToolInputError(
+        result.stderr.trim() || "Invalid search pattern",
+      );
+    const matches: { path: string; line: number; text: string }[] = [];
+    for (const line of result.stdout.split("\n")) {
+      if (!line) continue;
+      let event: {
+        type?: string;
+        data?: {
+          path?: { text?: string };
+          line_number?: number;
+          lines?: { text?: string };
+        };
+      };
+      try {
+        event = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (event.type !== "match") continue;
+      const path = event.data?.path?.text ?? "";
+      if (!path || protectedPath(path, this.options.secretPaths)) continue;
+      matches.push({
+        path,
+        line: event.data?.line_number ?? 0,
+        text: (event.data?.lines?.text ?? "").replace(/\n$/, "").slice(0, 1000),
+      });
+      if (matches.length > limit) break;
+    }
+    return {
+      matches: matches.slice(0, limit),
+      truncated: matches.length > limit,
+    };
+  }
+  private async searchScan(
+    query: string,
+    regex: boolean,
+    limit: number,
+    signal?: AbortSignal,
+  ) {
+    const pattern = regex ? new RegExp(query) : undefined;
+    const matches: { path: string; line: number; text: string }[] = [];
+    for (const path of await this.paths()) {
+      signal?.throwIfAborted();
+      let text: string;
+      try {
+        text = await this.readRaw(path);
+      } catch {
+        continue;
+      }
+      for (const [i, line] of text.split("\n").entries()) {
+        if (pattern ? pattern.test(line) : line.includes(query)) {
+          matches.push({ path, line: i + 1, text: line.slice(0, 1000) });
+          if (matches.length > limit)
+            return { matches: matches.slice(0, limit), truncated: true };
+        }
+      }
+    }
+    return { matches, truncated: false };
+  }
+  private async readRaw(path: string): Promise<string> {
     const bytes = await readFile(await this.resolve(path));
-    if (bytes.length > 256000)
+    if (bytes.length > 1_000_000)
       throw new ToolInputError(
         "File too large; use focused search or an artifact",
       );
     if (bytes.includes(0)) throw new ToolInputError("Binary file");
     return bytes.toString("utf8");
   }
+  private async read(
+    path: string,
+    startLine?: number,
+    endLine?: number,
+  ): Promise<string> {
+    const bytes = await readFile(await this.resolve(path));
+    if (bytes.includes(0)) throw new ToolInputError("Binary file");
+    const text = bytes.toString("utf8");
+    const lines = text.split("\n");
+    const total = lines.length;
+    if (startLine || endLine) {
+      const start = startLine ?? 1;
+      const end = endLine ?? total;
+      if (start > end)
+        throw new ToolInputError(`startLine ${start} is after endLine ${end}`);
+      if (start > total)
+        throw new ToolInputError(
+          `startLine ${start} is past the end (${total} lines)`,
+        );
+      const slice = lines.slice(start - 1, end);
+      return `${slice.join("\n")}\n[${total} lines]`;
+    }
+    if (bytes.length > 256000) {
+      const shown = Math.min(400, total);
+      return `${lines.slice(0, shown).join("\n")}\n[Showing lines 1-${shown} of ${total}]`;
+    }
+    return text;
+  }
+}
+function locate(content: string, needle: string): number[] {
+  const lines: number[] = [];
+  let from = 0;
+  while (from <= content.length) {
+    const at = content.indexOf(needle, from);
+    if (at < 0) break;
+    lines.push(content.slice(0, at).split("\n").length);
+    from = at + Math.max(needle.length, 1);
+  }
+  return lines;
 }

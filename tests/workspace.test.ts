@@ -205,3 +205,73 @@ test("host Git operations reject altered task metadata before touching the sourc
   assert.equal(await git(root, ["status", "--porcelain=v1"]), before);
   assert.equal(await readFile(join(root, "a.txt"), "utf8"), "base\n");
 });
+test("search caps matches, ranged reads keep the tail, and ambiguous patches do not write", async () => {
+  const root = await mkdtemp(join(tmpdir(), "tfvn-tools-"));
+  const lines = Array.from({ length: 2000 }, (_, i) =>
+    i === 119 ? "TOKEN TAIL" : i < 119 ? "TOKEN" : `line-${i + 1}`,
+  );
+  await writeFile(join(root, "notes.txt"), lines.join("\n"));
+  await writeFile(join(root, "twice.txt"), "ok\nok\n");
+  const broker = new ToolBroker(
+    root,
+    new PermissionPolicy(["read", "edit"]),
+    new ArtifactStore(join(root, "artifacts")),
+  );
+  const found = JSON.parse(
+    (
+      await broker.execute(
+        { id: "s", name: "search", arguments: { query: "TOKEN" } },
+        ["read"],
+      )
+    ).content,
+  );
+  assert.equal(found.truncated, true);
+  assert.equal(found.matches.length, 100);
+  assert.equal(
+    found.matches.some((match: { text: string }) =>
+      match.text.includes("TAIL"),
+    ),
+    false,
+  );
+  const tail = (
+    await broker.execute(
+      {
+        id: "r",
+        name: "read",
+        arguments: { path: "notes.txt", startLine: 1800 },
+      },
+      ["read"],
+    )
+  ).content;
+  assert.match(tail, /line-1800/);
+  assert.match(tail, /\[2000 lines\]/);
+  await assert.rejects(
+    broker.execute(
+      {
+        id: "p",
+        name: "patch",
+        arguments: { path: "twice.txt", oldText: "ok", newText: "no" },
+      },
+      ["read", "edit"],
+    ),
+    /matched 2 times/,
+  );
+  assert.equal(await readFile(join(root, "twice.txt"), "utf8"), "ok\nok\n");
+  await broker.execute(
+    {
+      id: "h",
+      name: "patch",
+      arguments: {
+        path: "notes.txt",
+        hunks: [
+          { oldText: "line-1800", newText: "LINE-A" },
+          { oldText: "line-1801", newText: "LINE-B" },
+        ],
+      },
+    },
+    ["read", "edit"],
+  );
+  const updated = await readFile(join(root, "notes.txt"), "utf8");
+  assert.match(updated, /LINE-A/);
+  assert.match(updated, /LINE-B/);
+});

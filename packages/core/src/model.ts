@@ -2,7 +2,10 @@ import { type ModelSpec, type Provider, type Usage } from "./contracts.js";
 export interface ToolCall {
   id: string;
   name: string;
-  arguments: Record<string, unknown>;
+  /** Object arguments, or a raw JSON string the runtime parses before execution. */
+  arguments: Record<string, unknown> | string;
+  /** Set when the call is returned to the model instead of executed. */
+  invalidReason?: string;
 }
 export interface ProviderData {
   provider: Provider;

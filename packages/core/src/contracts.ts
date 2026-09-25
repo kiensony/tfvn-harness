@@ -88,6 +88,8 @@ export interface EvidenceIdentity {
   profile: string;
   environment: string;
   toolVersion: string;
+  /** Digest of the frozen baseline test blobs. */
+  baseline: string;
 }
 export interface CheckRun {
   schemaVersion: 1;
@@ -98,6 +100,8 @@ export interface CheckRun {
   command: string[];
   exitCode: number | null;
   evidence: string[];
+  /** Tail of a failed log, kept for the repair prompt. */
+  logTail?: string;
 }
 export const findingSchema = z
   .object({

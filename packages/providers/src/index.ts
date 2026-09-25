@@ -44,14 +44,15 @@ abstract class BaseAdapter implements ModelAdapter {
       throw new ProviderError(
         "Configure verified input/output pricing in trusted settings before live admission",
       );
-    const input =
+    const input = Math.ceil(
       Buffer.byteLength(
         JSON.stringify({
           system: req.system,
           messages: req.messages,
           tools: req.tools,
         }),
-      ) + 1024;
+      ) / 4,
+    );
     return { ...this.usage(input, req.maxOutputTokens), estimated: true };
   }
   protected usage(input: number, output: number, requestId?: string): Usage {

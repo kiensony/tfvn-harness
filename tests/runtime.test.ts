@@ -259,3 +259,269 @@ test("independent read tools execute concurrently", async () => {
   assert.equal(peak, 2);
   ctx.journal.close();
 });
+test("token deltas stay out of the journal and the finished text is recorded once", async () => {
+  const deltas = Array.from({ length: 2000 }, () => ({
+    type: "text" as const,
+    delta: "a",
+  }));
+  const ctx = await setup(
+    scripted([[...deltas, use, { type: "finish", reason: "stop" }]]),
+  );
+  const result = await ctx.runtime.run(ctx.task, departments.dev!);
+  assert.equal(result.text, "a".repeat(2000));
+  const events = ctx.journal.events(ctx.task.sessionId);
+  assert.equal(events.filter((e) => e.type === "model.text").length, 0);
+  assert.ok(events.length < 10);
+  const done = events.find((e) => e.type === "model.completed");
+  assert.equal((done?.payload as { summary?: string }).summary, result.text);
+  ctx.journal.close();
+});
+test("usage reported before a tool-argument failure is settled and the model can continue", async () => {
+  let turn = 0;
+  const adapter: ModelAdapter = {
+    capabilities: () => ({
+      streaming: true,
+      tools: true,
+      images: false,
+      structuredOutput: false,
+    }),
+    estimateUsage: () => ({ inputTokens: 10, outputTokens: 20, cost: 1 }),
+    async *stream() {
+      turn++;
+      if (turn === 1) {
+        yield {
+          type: "usage",
+          usage: { inputTokens: 4, outputTokens: 2, cost: 0.25 },
+        };
+        const { ProviderError } = await import("../packages/core/src/model.js");
+        throw new ProviderError("Invalid tool arguments JSON");
+      }
+      yield { type: "text", delta: "recovered" };
+      yield use;
+      yield { type: "finish" as const, reason: "stop" as const };
+    },
+  };
+  const ctx = await setup(adapter);
+  const result = await ctx.runtime.run(ctx.task, departments.dev!);
+  assert.equal(result.text, "recovered");
+  assert.equal(ctx.journal.spending(ctx.task.sessionId).settled, 0.26);
+  assert.equal(ctx.journal.spending(ctx.task.sessionId).reserved, 0);
+  ctx.journal.close();
+});
+test("invalid tool JSON becomes an observation and a later call can edit", async () => {
+  const ctx = await setup(
+    scripted([
+      [
+        {
+          type: "tool_call",
+          call: { id: "bad", name: "write", arguments: "{not json" },
+        },
+        use,
+        { type: "finish", reason: "tool_calls" },
+      ],
+      [
+        {
+          type: "tool_call",
+          call: {
+            id: "good",
+            name: "write",
+            arguments: { path: "hello.txt", content: "fixed" },
+          },
+        },
+        use,
+        { type: "finish", reason: "tool_calls" },
+      ],
+      [
+        { type: "text", delta: "fixed the call" },
+        use,
+        { type: "finish", reason: "stop" },
+      ],
+    ]),
+  );
+  const result = await ctx.runtime.run(ctx.task, departments.dev!);
+  assert.equal(result.text, "fixed the call");
+  assert.equal(await readFile(join(ctx.root, "hello.txt"), "utf8"), "fixed");
+  const saved = ctx.journal.checkpoint<{
+    messages: { role: string; content: string }[];
+  }>(ctx.task.sessionId, "agent:task");
+  assert.match(
+    saved!.messages.find((m) => m.role === "tool")!.content,
+    /Invalid tool arguments JSON/,
+  );
+  ctx.journal.close();
+});
+test("duplicate tool call ids are observations and do not write", async () => {
+  const ctx = await setup(
+    scripted([
+      [
+        {
+          type: "tool_call",
+          call: {
+            id: "same",
+            name: "write",
+            arguments: { path: "hello.txt", content: "one" },
+          },
+        },
+        {
+          type: "tool_call",
+          call: {
+            id: "same",
+            name: "write",
+            arguments: { path: "hello.txt", content: "two" },
+          },
+        },
+        use,
+        { type: "finish", reason: "tool_calls" },
+      ],
+      [
+        { type: "text", delta: "did not write" },
+        use,
+        { type: "finish", reason: "stop" },
+      ],
+    ]),
+  );
+  await ctx.runtime.run(ctx.task, departments.dev!);
+  await assert.rejects(readFile(join(ctx.root, "hello.txt")));
+  ctx.journal.close();
+});
+test("read-only tool results are appended in call order", async () => {
+  const { z } = await import("zod");
+  const ctx = await setup(
+    scripted([
+      [
+        {
+          type: "tool_call",
+          call: { id: "r1", name: "lookup", arguments: { id: "r1" } },
+        },
+        {
+          type: "tool_call",
+          call: { id: "r2", name: "lookup", arguments: { id: "r2" } },
+        },
+        use,
+        { type: "finish", reason: "tool_calls" },
+      ],
+      [
+        { type: "text", delta: "ordered" },
+        use,
+        { type: "finish", reason: "stop" },
+      ],
+    ]),
+  );
+  ctx.broker.extensions.register({
+    name: "lookup",
+    description: "Read lookup",
+    schema: z.object({ id: z.string() }).strict(),
+    capability: "read",
+    sideEffect: false,
+    location: "broker",
+    timeoutMs: 1000,
+    maxOutputBytes: 1000,
+    execute: async ({ id }) => {
+      if (id === "r1") await new Promise((r) => setTimeout(r, 30));
+      return id;
+    },
+  });
+  await ctx.runtime.run(ctx.task, { ...departments.dev!, tools: ["lookup"] });
+  const saved = ctx.journal.checkpoint<{
+    messages: { role: string; callId?: string; content: string }[];
+  }>(ctx.task.sessionId, "agent:task");
+  const tools = saved!.messages.filter((m) => m.role === "tool");
+  assert.deepEqual(
+    tools.map((m) => m.callId),
+    ["r1", "r2"],
+  );
+  assert.deepEqual(
+    tools.map((m) => m.content),
+    ["r1", "r2"],
+  );
+  ctx.journal.close();
+});
+test("a context-length error compacts once and the retry is shorter", async () => {
+  const sizes: number[] = [];
+  const { ProviderError } = await import("../packages/core/src/model.js");
+  const adapter: ModelAdapter = {
+    capabilities: () => ({
+      streaming: true,
+      tools: true,
+      images: false,
+      structuredOutput: false,
+    }),
+    estimateUsage: () => ({ inputTokens: 10, outputTokens: 20, cost: 1 }),
+    async *stream(req: ModelRequest) {
+      if (req.system.startsWith("Summarize the earlier")) {
+        yield { type: "text", delta: "short summary" };
+        yield use;
+        yield { type: "finish", reason: "stop" };
+        return;
+      }
+      sizes.push(Buffer.byteLength(JSON.stringify(req.messages)));
+      if (sizes.length <= 3) {
+        yield {
+          type: "tool_call",
+          call: { id: `c${sizes.length}`, name: "files", arguments: {} },
+        };
+        yield use;
+        yield { type: "finish", reason: "tool_calls" };
+        return;
+      }
+      if (sizes.length === 4) {
+        yield {
+          type: "usage",
+          usage: { inputTokens: 4, outputTokens: 2, cost: 0.25 },
+        };
+        throw new ProviderError("maximum context length");
+      }
+      yield { type: "text", delta: "compacted" };
+      yield use;
+      yield { type: "finish", reason: "stop" };
+    },
+  };
+  const ctx = await setup(adapter);
+  const result = await ctx.runtime.run(ctx.task, departments.dev!);
+  assert.equal(result.text, "compacted");
+  assert.ok(sizes[4]! < sizes[3]!);
+  assert.equal(ctx.journal.spending(ctx.task.sessionId).reserved, 0);
+  ctx.journal.close();
+});
+test("long tool output keeps the head, the tail, and the omitted byte count", async () => {
+  const { z } = await import("zod");
+  const body = `${"H".repeat(10000)}MIDDLE${"T".repeat(30000)}TAIL_MARKER`;
+  const ctx = await setup(
+    scripted([
+      [
+        { type: "tool_call", call: { id: "d", name: "dump", arguments: {} } },
+        use,
+        { type: "finish", reason: "tool_calls" },
+      ],
+      [
+        { type: "text", delta: "saw the tail" },
+        use,
+        { type: "finish", reason: "stop" },
+      ],
+    ]),
+  );
+  ctx.broker.extensions.register({
+    name: "dump",
+    description: "Dump text",
+    schema: z.object({}).strict(),
+    capability: "read",
+    sideEffect: false,
+    location: "broker",
+    timeoutMs: 1000,
+    maxOutputBytes: 100000,
+    execute: async () => body,
+  });
+  await ctx.runtime.run(ctx.task, { ...departments.dev!, tools: ["dump"] });
+  const saved = ctx.journal.checkpoint<{
+    messages: { role: string; content: string }[];
+  }>(ctx.task.sessionId, "agent:task");
+  const observation = saved!.messages.find((m) => m.role === "tool")!.content;
+  assert.ok(observation.startsWith("H".repeat(100)));
+  assert.ok(observation.endsWith("TAIL_MARKER"));
+  assert.match(
+    observation,
+    /\[\d+ bytes omitted; full artifact [a-f0-9]{64}\]/,
+  );
+  assert.equal(observation.includes("MIDDLE"), false);
+  ctx.journal.close();
+});
